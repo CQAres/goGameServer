@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/gameServer.iml" filepath="$PROJECT_DIR$/.idea/gameServer.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/goGameServer.iml" filepath="$PROJECT_DIR$/.idea/goGameServer.iml" />
     </modules>
   </component>
 </project>
