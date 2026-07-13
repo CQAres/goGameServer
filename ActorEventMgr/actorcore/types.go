@@ -1,7 +1,7 @@
 package actorcore
 
 import (
-	"gameServer/EventMgr/config"
+	"goGameServer/EventMgr/config"
 )
 
 // Category 事件分类，决定事件由哪种 Actor 处理

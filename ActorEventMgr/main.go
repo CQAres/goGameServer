@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"sync"
 
-	"gameServer/ActorEventMgr/actorcore"
-	"gameServer/EventMgr/RoleLevelChange"
-	"gameServer/EventMgr/RoleLogin"
-	"gameServer/EventMgr/RoleLogout"
-	"gameServer/EventMgr/config"
+	"goGameServer/ActorEventMgr/actorcore"
+	"goGameServer/EventMgr/RoleLevelChange"
+	"goGameServer/EventMgr/RoleLogin"
+	"goGameServer/EventMgr/RoleLogout"
+	"goGameServer/EventMgr/config"
 )
 
 // Init 注册监听器，通过 Category 指定每个监听器由哪种 Actor 处理

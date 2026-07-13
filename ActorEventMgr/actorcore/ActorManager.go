@@ -2,7 +2,7 @@ package actorcore
 
 import (
 	"fmt"
-	"gameServer/EventMgr/config"
+	"goGameServer/EventMgr/config"
 	"sync"
 )
 

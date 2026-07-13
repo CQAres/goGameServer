@@ -1,3 +1,3 @@
-module gameServer
+module goGameServer
 
 go 1.25
