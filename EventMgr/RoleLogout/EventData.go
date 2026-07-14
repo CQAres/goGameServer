@@ -1,7 +1,7 @@
 package RoleLogout
 
 import (
-	"gameServer/EventMgr/config"
+	"goGameServer/EventMgr/config"
 )
 
 type LogoutEvent struct {

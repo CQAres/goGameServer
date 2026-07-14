@@ -1,20 +1,58 @@
 package main
 
 import (
-	"fmt"
+	"goGameServer/netlayer"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
-//TIP <p>To run your code, right-click the code and select <b>Run</b>.</p> <p>Alternatively, click
-// the <icon src="AllIcons.Actions.Execute"/> icon in the gutter and select the <b>Run</b> menu item from here.</p>
-func main() {
-	//TIP <p>Press <shortcut actionId="ShowIntentionActions"/> when your caret is at the underlined text
-	// to see how GoLand suggests fixing the warning.</p><p>Alternatively, if available, click the lightbulb to view possible fixes.</p>
-	s := "gopher"
-	fmt.Printf("Hello and welcome, %s!\n", s)
+func registerHandlers(server *netlayer.Server) {
+	mgr := server.SessionManager()
+	router := server.Router()
 
-	for i := 1; i <= 5; i++ {
-		//TIP <p>To start your debugging session, right-click your code in the editor and select the Debug option.</p> <p>We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-		// for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.</p>
-		fmt.Println("i =", 100/i)
+	// 登录 handler：解码 → 绑定 RoleID
+	router.Register(netlayer.MsgIDLogin, func(sess *netlayer.Session, payload []byte) error {
+		var msg netlayer.LoginMessage
+		if err := netlayer.DecodePayload(payload, &msg); err != nil {
+			return err
+		}
+		mgr.BindRole(sess, msg.RoleID)
+		return sess.Send(netlayer.MsgIDLoginAck, netlayer.LoginAckMessage{
+			Success: true,
+			Message: "login ok",
+		})
+	})
+
+	// Echo handler
+	router.Register(netlayer.MsgIDEcho, func(sess *netlayer.Session, payload []byte) error {
+		var msg netlayer.EchoMessage
+		if err := netlayer.DecodePayload(payload, &msg); err != nil {
+			return err
+		}
+		return sess.Send(netlayer.MsgIDEchoAck, netlayer.EchoAckMessage{Text: msg.Text})
+	})
+}
+
+func main() {
+	// 1. 创建服务器
+	router := netlayer.NewRouter()
+	server := netlayer.NewServer(netlayer.DefaultConfig(), router)
+
+	// 2. 注册业务 handler（登录、聊天等）
+	registerHandlers(server)
+
+	// 3. 启动
+	if err := server.Start(); err != nil {
+		log.Fatal(err)
 	}
+
+	// 4. 等待中断信号
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+
+	// 5. 优雅关闭
+	server.Stop()
 }

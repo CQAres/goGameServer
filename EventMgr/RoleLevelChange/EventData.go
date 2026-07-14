@@ -1,7 +1,7 @@
 package RoleLevelChange
 
 import (
-	"gameServer/EventMgr/config"
+	"goGameServer/EventMgr/config"
 )
 
 type LevelChangeEvent struct {

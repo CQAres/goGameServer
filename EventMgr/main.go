@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"gameServer/EventMgr/ASyncEventMgr"
-	"gameServer/EventMgr/RoleLevelChange"
-	"gameServer/EventMgr/RoleLogin"
-	"gameServer/EventMgr/RoleLogout"
-	"gameServer/EventMgr/SyncEventMgr"
-	"gameServer/EventMgr/config"
+	"goGameServer/EventMgr/ASyncEventMgr"
+	"goGameServer/EventMgr/RoleLevelChange"
+	"goGameServer/EventMgr/RoleLogin"
+	"goGameServer/EventMgr/RoleLogout"
+	"goGameServer/EventMgr/SyncEventMgr"
+	"goGameServer/EventMgr/config"
 	"math/rand"
 	"strconv"
 	"sync"

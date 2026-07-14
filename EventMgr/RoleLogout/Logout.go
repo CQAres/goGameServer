@@ -2,7 +2,7 @@ package RoleLogout
 
 import (
 	"fmt"
-	"gameServer/EventMgr/config"
+	"goGameServer/EventMgr/config"
 )
 
 type LogoutListener struct{}

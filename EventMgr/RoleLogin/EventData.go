@@ -1,7 +1,7 @@
 package RoleLogin
 
 import (
-	"gameServer/EventMgr/config"
+	"goGameServer/EventMgr/config"
 )
 
 type LoginEvent struct {

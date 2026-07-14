@@ -2,7 +2,7 @@ package RoleLevelChange
 
 import (
 	"fmt"
-	"gameServer/EventMgr/config"
+	"goGameServer/EventMgr/config"
 )
 
 // LevelChangeLog 升级日志

@@ -2,7 +2,7 @@ package RoleLogin
 
 import (
 	"fmt"
-	"gameServer/EventMgr/config"
+	"goGameServer/EventMgr/config"
 )
 
 type LoginListener struct{}
