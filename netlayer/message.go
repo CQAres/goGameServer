@@ -7,8 +7,6 @@ const (
 	MsgIDLoginAck  uint16 = 2 // 登录回复
 	MsgIDEcho      uint16 = 3 // 回显测试
 	MsgIDEchoAck   uint16 = 4 // 回显回复
-	MsgIDChat      uint16 = 5 // 聊天
-	MsgIDChatAck   uint16 = 6 // 聊天回复
 )
 
 // LoginMessage 登录消息（不做鉴权，客户端直接发 RoleID）

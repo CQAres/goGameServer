@@ -87,6 +87,9 @@ func (ws *WSConnection) ReadFrame() (uint16, []byte, error) {
 		return 0, nil, fmt.Errorf("ws frame too short: %d", len(data))
 	}
 	length := binary.BigEndian.Uint32(data[0:lenFieldSize])
+	if length < msgIDFieldSize || length > maxPayloadSize {
+		return 0, nil, fmt.Errorf("invalid frame length: %d", length)
+	}
 	if int(length) != len(data)-lenFieldSize {
 		return 0, nil, fmt.Errorf("ws length mismatch: declared=%d, actual=%d",
 			length, len(data)-lenFieldSize)

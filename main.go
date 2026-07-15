@@ -11,28 +11,10 @@ import (
 func registerHandlers(server *netlayer.Server) {
 	mgr := server.SessionManager()
 	router := server.Router()
+	handlerMgr := netlayer.NewServiceHandler(mgr)
 
-	// 登录 handler：解码 → 绑定 RoleID
-	router.Register(netlayer.MsgIDLogin, func(sess *netlayer.Session, payload []byte) error {
-		var msg netlayer.LoginMessage
-		if err := netlayer.DecodePayload(payload, &msg); err != nil {
-			return err
-		}
-		mgr.BindRole(sess, msg.RoleID)
-		return sess.Send(netlayer.MsgIDLoginAck, netlayer.LoginAckMessage{
-			Success: true,
-			Message: "login ok",
-		})
-	})
-
-	// Echo handler
-	router.Register(netlayer.MsgIDEcho, func(sess *netlayer.Session, payload []byte) error {
-		var msg netlayer.EchoMessage
-		if err := netlayer.DecodePayload(payload, &msg); err != nil {
-			return err
-		}
-		return sess.Send(netlayer.MsgIDEchoAck, netlayer.EchoAckMessage{Text: msg.Text})
-	})
+	router.Register(netlayer.MsgIDLogin, handlerMgr.HandleLogin)
+	router.Register(netlayer.MsgIDEcho, handlerMgr.HandleEcho)
 }
 
 func main() {

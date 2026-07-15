@@ -36,15 +36,17 @@ func (m *SessionManager) Add(sess *Session) {
 // BindRole 绑定 RoleID，若已有同 RoleID 的 Session 则顶掉旧连接
 func (m *SessionManager) BindRole(sess *Session, roleID uint64) {
 	m.mu.Lock()
-	if old, ok := m.byRole[roleID]; ok && old != sess {
-		m.mu.Unlock()
-		old.Close()
-		m.mu.Lock()
+	var old *Session
+	if o, ok := m.byRole[roleID]; ok && o != sess {
+		old = o
 		delete(m.sessions, old.ID())
 	}
 	sess.SetRoleID(roleID)
 	m.byRole[roleID] = sess
 	m.mu.Unlock()
+	if old != nil {
+		go old.Close()
+	}
 }
 
 // Remove 移除 Session（仅当 byRole 中的指针与当前一致时才删除）

@@ -1,10 +1,17 @@
 package netlayer
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
 	"time"
+)
+
+const (
+	ErrorCodeSessionClosed = 1
+	ErrorCodeSendQueueFull = 2
+	ErrorCodeWriteFailed   = 3
 )
 
 // sendItem 发送队列项
@@ -22,8 +29,9 @@ type Session struct {
 	sendQueue  chan sendItem // 异步发送队列
 	lastActive atomic.Int64  // unix nano，最后活跃时间
 	closeOnce  sync.Once
-	done       chan struct{}
+	done       chan struct{}  // sendLoop 退出信号
 	onClose    func(*Session) // 关闭回调
+	closeSig   chan struct{}  // 关闭信号
 }
 
 // NewSession 创建会话并启动发送协程
@@ -35,6 +43,7 @@ func NewSession(id uint64, conn Connection, isWS bool, queueSize int, onClose fu
 		sendQueue: make(chan sendItem, queueSize),
 		done:      make(chan struct{}),
 		onClose:   onClose,
+		closeSig:  make(chan struct{}),
 	}
 	s.lastActive.Store(time.Now().UnixNano())
 	go s.sendLoop()
@@ -82,11 +91,21 @@ func (s *Session) Send(msgID uint16, payload any) error {
 	if err != nil {
 		return err
 	}
-	select {
+
+	// 存在竟态窗口，用 recover 兜底，把 panic 转成 error 返回
+	defer func() {
+		if r := recover(); r != nil {
+			err = SendError(s.id, msgID, ErrorCodeSessionClosed)
+		}
+	}()
+
+	select { // select 是选择一个可执行的case执行
+	case <-s.closeSig:
+		return SendError(s.id, msgID, ErrorCodeSessionClosed)
 	case s.sendQueue <- sendItem{msgID: msgID, payload: data}:
 		return nil
-	default:
-		return errSendQueueFull(s.id, msgID)
+	default: // 如果没有 default select会阻塞等待某个case就绪
+		return SendError(s.id, msgID, ErrorCodeSendQueueFull)
 	}
 }
 
@@ -96,26 +115,37 @@ func (s *Session) Done() <-chan struct{} { return s.done }
 // Close 关闭会话（幂等）
 func (s *Session) Close() {
 	s.closeOnce.Do(func() {
+		close(s.closeSig) // 先发信号，阻止新的 Send
 		close(s.sendQueue)
-		err := s.conn.Close()
-		if err != nil {
-		}
 		<-s.done
+		if err := s.conn.Close(); err != nil {
+			log.Printf("[Session] Conn close: id=%d, err=%v", s.id, err)
+		}
 		if s.onClose != nil {
 			s.onClose(s)
 		}
 	})
 }
 
-func errSendQueueFull(id uint64, msgID uint16) error {
-	return &sendQueueFullError{sessionID: id, msgID: msgID}
+func SendError(id uint64, msgID uint16, code int) error {
+	return &NetError{code: code, sessionID: id, msgID: msgID}
 }
 
-type sendQueueFullError struct {
+type NetError struct {
+	code      int
 	sessionID uint64
 	msgID     uint16
 }
 
-func (e *sendQueueFullError) Error() string {
-	return "send queue full"
+func (e *NetError) Error() string {
+	switch e.code {
+	case ErrorCodeSessionClosed:
+		return fmt.Sprintf("session closed: sessionID=%d, msgID=%d", e.sessionID, e.msgID)
+	case ErrorCodeSendQueueFull:
+		return fmt.Sprintf("send queue full: sessionID=%d, msgID=%d", e.sessionID, e.msgID)
+	case ErrorCodeWriteFailed:
+		return fmt.Sprintf("write failed: sessionID=%d, msgID=%d", e.sessionID, e.msgID)
+	default:
+		return fmt.Sprintf("unknown error: sessionID=%d, msgID=%d", e.sessionID, e.msgID)
+	}
 }
