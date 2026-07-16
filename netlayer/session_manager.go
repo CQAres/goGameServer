@@ -45,6 +45,7 @@ func (m *SessionManager) BindRole(sess *Session, roleID uint64) {
 	m.byRole[roleID] = sess
 	m.mu.Unlock()
 	if old != nil {
+		old.SetRoleID(0) // 清除 RoleID，防止 onClose→Remove 误删新 Session 的 byRole 索引
 		go old.Close()
 	}
 }

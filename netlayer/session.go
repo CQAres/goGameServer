@@ -1,6 +1,7 @@
 package netlayer
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -12,6 +13,13 @@ const (
 	ErrorCodeSessionClosed = 1
 	ErrorCodeSendQueueFull = 2
 	ErrorCodeWriteFailed   = 3
+)
+
+// 哨兵错误，支持 errors.Is 判断
+var (
+	ErrSessionClosed = errors.New("session closed")
+	ErrSendQueueFull = errors.New("send queue full")
+	ErrWriteFailed   = errors.New("write failed")
 )
 
 // sendItem 发送队列项
@@ -85,26 +93,28 @@ func (s *Session) LastActive() time.Time {
 	return time.Unix(0, s.lastActive.Load())
 }
 
-// Send 投递消息到发送队列（非阻塞，队列满时返回错误）
-func (s *Session) Send(msgID uint16, payload any) error {
-	data, err := EncodePayload(payload)
-	if err != nil {
-		return err
+// Send 投递消息到发送队列（非阻塞，队列满时返回错误）。
+// Session 实现了 actorcore.Responder 接口，供 Gate 和 Actor 回写消息。
+func (s *Session) Send(msgID uint16, payload any) (err error) {
+	data, encErr := EncodePayload(payload)
+	if encErr != nil {
+		return encErr
 	}
 
-	// 存在竟态窗口，用 recover 兜底，把 panic 转成 error 返回
+	// 存在竟态窗口，用 recover 兜底，把 panic 转成 error 返回。
+	// 使用命名返回值 err，使 defer 能修改返回值。
 	defer func() {
 		if r := recover(); r != nil {
 			err = SendError(s.id, msgID, ErrorCodeSessionClosed)
 		}
 	}()
 
-	select { // select 是选择一个可执行的case执行
+	select {
 	case <-s.closeSig:
 		return SendError(s.id, msgID, ErrorCodeSessionClosed)
 	case s.sendQueue <- sendItem{msgID: msgID, payload: data}:
 		return nil
-	default: // 如果没有 default select会阻塞等待某个case就绪
+	default:
 		return SendError(s.id, msgID, ErrorCodeSendQueueFull)
 	}
 }
@@ -135,6 +145,29 @@ type NetError struct {
 	code      int
 	sessionID uint64
 	msgID     uint16
+}
+
+// Code 返回错误码
+func (e *NetError) Code() int { return e.code }
+
+// SessionID 返回关联的 Session ID
+func (e *NetError) SessionID() uint64 { return e.sessionID }
+
+// MsgID 返回关联的消息 ID
+func (e *NetError) MsgID() uint16 { return e.msgID }
+
+// Is 支持 errors.Is 判断哨兵错误
+func (e *NetError) Is(target error) bool {
+	switch target {
+	case ErrSessionClosed:
+		return e.code == ErrorCodeSessionClosed
+	case ErrSendQueueFull:
+		return e.code == ErrorCodeSendQueueFull
+	case ErrWriteFailed:
+		return e.code == ErrorCodeWriteFailed
+	default:
+		return false
+	}
 }
 
 func (e *NetError) Error() string {

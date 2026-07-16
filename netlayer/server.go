@@ -18,7 +18,7 @@ import (
 // 内部统一使用 Connection 抽象，TCP 和 WS 连接走同一套读循环与路由分发逻辑。
 type Server struct {
 	cfg      *Config
-	router   *Router
+	gate     *Gate
 	mgr      *SessionManager
 	upgrader *websocket.Upgrader
 
@@ -30,19 +30,16 @@ type Server struct {
 	done     chan struct{} // 关闭信号
 }
 
-// NewServer 创建服务器（不启动监听），cfg 为 nil 时使用默认配置，router 为 nil 时创建空路由器。
-func NewServer(cfg *Config, router *Router) *Server {
+// NewServer 创建服务器（不启动监听），cfg 为 nil 时使用默认配置。
+func NewServer(cfg *Config, gate *Gate) *Server {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
-	if router == nil {
-		router = NewRouter()
-	}
 	return &Server{
-		cfg:    cfg,
-		router: router,
-		mgr:    NewSessionManager(),
-		done:   make(chan struct{}),
+		cfg:  cfg,
+		gate: gate,
+		mgr:  NewSessionManager(),
+		done: make(chan struct{}),
 		upgrader: &websocket.Upgrader{
 			ReadBufferSize:  cfg.ReadBufferSize,
 			WriteBufferSize: cfg.WriteBufferSize,
@@ -55,8 +52,8 @@ func NewServer(cfg *Config, router *Router) *Server {
 // SessionManager 返回会话管理器，供业务层在登录 handler 中调用 BindRole 等。
 func (s *Server) SessionManager() *SessionManager { return s.mgr }
 
-// Router 返回路由器，供业务层注册消息处理器。
-func (s *Server) Router() *Router { return s.router }
+// Gate 返回网关，供业务层注册消息路由。
+func (s *Server) Gate() *Gate { return s.gate }
 
 // Config 返回当前服务器配置（只读用途）。
 func (s *Server) Config() *Config { return s.cfg }
@@ -139,8 +136,8 @@ func (s *Server) handleWSUpgrade(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-// handleConn 连接读循环：创建 Session → 循环 ReadFrame → 更新活跃时间 → 路由分发。
-// 心跳消息(MsgIDHeartbeat)在协议层直接消费，不分发到 Router。
+// handleConn 连接读循环：创建 Session → 循环 ReadFrame → 更新活跃时间 → Gate 分发。
+// 心跳消息(MsgIDHeartbeat)在协议层直接消费，不分发到 Gate。
 func (s *Server) handleConn(conn Connection, isWS bool) {
 	sess := NewSession(
 		s.mgr.NextID(),
@@ -178,8 +175,8 @@ func (s *Server) handleConn(conn Connection, isWS bool) {
 			continue
 		}
 
-		// 分发到业务 handler
-		if err := s.router.Dispatch(sess, msgID, payload); err != nil {
+		// 分发到 Gate → Actor
+		if err := s.gate.Dispatch(sess, msgID, payload); err != nil {
 			log.Printf("[Server] dispatch error: id=%d, msgID=%d, err=%v",
 				sess.ID(), msgID, err)
 		}
@@ -200,7 +197,7 @@ func (s *Server) heartbeatLoop() {
 					log.Printf("[Server] heartbeat timeout: id=%d, roleID=%d, lastActive=%s",
 						sess.ID(), sess.RoleID(),
 						sess.LastActive().Format(time.RFC3339))
-					sess.Close()
+					go sess.Close()
 				}
 				return true
 			})
@@ -218,21 +215,25 @@ func (s *Server) Stop() {
 
 		// 1. 停止接受新连接
 		if s.tcpListener != nil {
-			s.tcpListener.Close()
+			if err := s.tcpListener.Close(); err != nil {
+				log.Printf("[Server] tcp listener close: %v", err)
+			}
 		}
 		if s.httpServer != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			s.httpServer.Shutdown(ctx)
+			if err := s.httpServer.Shutdown(ctx); err != nil {
+				log.Printf("[Server] http server shutdown: %v", err)
+			}
 		}
 
-		// 2. 关闭所有在线会话（触发各读循环 goroutine 退出）
+		// 2. 并行关闭所有在线会话（触发各读循环 goroutine 退出）
 		s.mgr.Range(func(sess *Session) bool {
-			sess.Close()
+			go sess.Close()
 			return true
 		})
 
-		// 3. 等待所有 goroutine 退出
+		// 3. 等待所有 goroutine 退出（handleConn 在 conn.Close 后退出）
 		s.wg.Wait()
 		log.Printf("[Server] stopped, remaining sessions=%d", s.mgr.Count())
 	})

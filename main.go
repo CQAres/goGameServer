@@ -1,6 +1,7 @@
 package main
 
 import (
+	"goGameServer/actorcore"
 	"goGameServer/netlayer"
 	"log"
 	"os"
@@ -8,33 +9,46 @@ import (
 	"syscall"
 )
 
-func registerHandlers(server *netlayer.Server) {
-	mgr := server.SessionManager()
-	router := server.Router()
-	handlerMgr := netlayer.NewServiceHandler(mgr)
+// registerRoutes 注册消息路由表：MsgID → Actor
+func registerRoutes(gate *netlayer.Gate) {
+	// 登录 → 命名服务 "login"（Phase 3 实现 login service）
+	gate.MustRegisterRoute(netlayer.MsgIDLogin, netlayer.MsgRoute{
+		Target:  netlayer.TargetNamed,
+		Name:    "login",
+		Decoder: netlayer.MakeDecoder(func() any { return &netlayer.LoginMessage{} }),
+	})
 
-	router.Register(netlayer.MsgIDLogin, handlerMgr.HandleLogin)
-	router.Register(netlayer.MsgIDEcho, handlerMgr.HandleEcho)
+	// 回显 → 玩家 Actor（Phase 3 注册 player handler）
+	gate.MustRegisterRoute(netlayer.MsgIDEcho, netlayer.MsgRoute{
+		Target:  netlayer.TargetPlayer,
+		Decoder: netlayer.MakeDecoder(func() any { return &netlayer.EchoMessage{} }),
+	})
 }
 
 func main() {
-	// 1. 创建服务器
-	router := netlayer.NewRouter()
-	server := netlayer.NewServer(netlayer.DefaultConfig(), router)
+	// 1. 获取 ActorManager 单例
+	mgr := actorcore.GetActorManager()
 
-	// 2. 注册业务 handler（登录、聊天等）
-	registerHandlers(server)
+	// 2. 创建 Gate 网关（netlayer → actorcore 单向依赖）
+	gate := netlayer.NewGate(mgr)
 
-	// 3. 启动
+	// 3. 创建服务器
+	server := netlayer.NewServer(netlayer.DefaultConfig(), gate)
+
+	// 4. 注册消息路由
+	registerRoutes(gate)
+
+	// 5. 启动
 	if err := server.Start(); err != nil {
 		log.Fatal(err)
 	}
 
-	// 4. 等待中断信号
+	// 6. 等待中断信号
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
-	// 5. 优雅关闭
+	// 7. 优雅关闭
 	server.Stop()
+	mgr.Stop()
 }
