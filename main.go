@@ -3,6 +3,7 @@ package main
 import (
 	"goGameServer/actorcore"
 	"goGameServer/netlayer"
+	"goGameServer/service"
 	"log"
 	"os"
 	"os/signal"
@@ -11,14 +12,14 @@ import (
 
 // registerRoutes 注册消息路由表：MsgID → Actor
 func registerRoutes(gate *netlayer.Gate) {
-	// 登录 → 命名服务 "login"（Phase 3 实现 login service）
+	// 登录 → 命名服务 "login"
 	gate.MustRegisterRoute(netlayer.MsgIDLogin, netlayer.MsgRoute{
 		Target:  netlayer.TargetNamed,
 		Name:    "login",
 		Decoder: netlayer.MakeDecoder(func() any { return &netlayer.LoginMessage{} }),
 	})
 
-	// 回显 → 玩家 Actor（Phase 3 注册 player handler）
+	// 回显 → 玩家 Actor
 	gate.MustRegisterRoute(netlayer.MsgIDEcho, netlayer.MsgRoute{
 		Target:  netlayer.TargetPlayer,
 		Decoder: netlayer.MakeDecoder(func() any { return &netlayer.EchoMessage{} }),
@@ -38,17 +39,20 @@ func main() {
 	// 4. 注册消息路由
 	registerRoutes(gate)
 
-	// 5. 启动
+	// 5. 初始化业务服务（login service、echo handler）
+	service.Init(mgr, server.SessionManager())
+
+	// 6. 启动
 	if err := server.Start(); err != nil {
 		log.Fatal(err)
 	}
 
-	// 6. 等待中断信号
+	// 7. 等待中断信号
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
-	// 7. 优雅关闭
+	// 8. 优雅关闭
 	server.Stop()
 	mgr.Stop()
 }
